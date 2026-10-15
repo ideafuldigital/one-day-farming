@@ -1,0 +1,30 @@
+export const clusterIds = ['mankulam', 'vattavada', 'kanthallor'] as const;
+export const kinds = ['stays', 'packages', 'products', 'bookings', 'content'] as const;
+export type Kind = typeof kinds[number];
+export type ClusterKey = typeof clusterIds[number];
+export interface Principal {
+    userId: string;
+    email: string;
+    owner: boolean;
+    clusterId: ClusterKey | null;
+    permissions: Kind[];
+}
+export class AccessError extends Error {
+    constructor(public status: number, message: string) { super(message); }
+}
+export function assertPermission(p: Principal, cluster: string, kind?: string) {
+    if (!clusterIds.includes(cluster as ClusterKey))
+        throw new AccessError(400, 'Unknown cluster.');
+    if (kind && !kinds.includes(kind as Kind))
+        throw new AccessError(400, 'Unknown record type.');
+    if (kind === 'content' && !p.owner)
+        throw new AccessError(403, 'Only the Super Admin can edit website content.');
+    if (!p.owner && (p.clusterId !== cluster || (kind && !p.permissions.includes(kind as Kind))))
+        throw new AccessError(403, 'You do not have permission for this cluster or section.');
+}
+export function assertSameOrigin(request: Request) {
+    if (request.headers.get('origin') !== (new URL(request.url).protocol + '//' + (request.headers.get('host') || new URL(request.url).host)))
+        throw new AccessError(403, 'This action must come from the admin website.');
+    if (!request.headers.get('content-type')?.startsWith('application/json'))
+        throw new AccessError(415, 'JSON is required.');
+}

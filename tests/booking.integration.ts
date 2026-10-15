@@ -1,0 +1,35 @@
+import assert from 'node:assert/strict';
+import {GET,POST} from '@/app/api/booking/route';
+import {GET as adminGET,POST as adminPOST} from '@/app/api/admin/booking/route';
+import {setUser,env} from './fake-runtime';
+import {defaults,availability,price,addDays,today,validateExisting,type State,type Service} from '@/lib/booking/engine';
+import {services,readState,mutate} from '@/lib/booking/server';
+let checks=0;function ok(v:unknown){assert.ok(v);checks++}
+const root='https://test.local';function req(body:unknown){return new Request(root+'/api/booking',{method:'POST',headers:{origin:root,'content-type':'application/json'},body:JSON.stringify(body)})}
+const cluster='mankulam',service='mankulam-walk',list=await services(cluster);const day=addDays(today(),35);const selection={start:day,end:day,slot:'09:00',guests:1,meal:false};
+setUser(null);ok((await adminGET(new Request(root+'/api/admin/booking?cluster='+cluster))).status===401);
+setUser('unassigned@example.test');ok((await adminGET(new Request(root+'/api/admin/booking?cluster='+cluster))).status===403);
+setUser('owner@example.test');const initial=await adminGET(new Request(root+'/api/admin/booking?cluster='+cluster));ok(initial.status===200);const initialData=await initial.json() as {bookings:{token?:string;key?:string}[]};ok(initialData.bookings.length>0);ok(initialData.bookings.every(b=>!b.token&&!b.key));
+const state=await readState(cluster,list);const setting={...state.state.settings[service],slotCapacity:1,notice:0};ok((await adminPOST(req({cluster,action:'reset'}))).status===200);const v=(await readState(cluster,list)).version;ok((await adminPOST(req({cluster,action:'settings',service,settings:setting,version:v}))).status===200);
+const inventory=await GET(new Request(root+'/api/booking?'+new URLSearchParams({cluster,service,guests:'1',from:day})));const inv=await inventory.json() as {dates:{slots:{total:number}[]}[];settings:{policyVersion:number}};ok(inventory.status===200);const expectedTotal=inv.dates[0].slots[0].total;
+const base={cluster,service,action:'hold',selection,policyVersion:inv.settings.policyVersion,expectedTotal};
+const keys=[crypto.randomUUID(),crypto.randomUUID()];const race=await Promise.all(keys.map(key=>POST(req({...base,key}))));ok(race.filter(r=>r.status===200).length===1);ok(race.filter(r=>r.status===409).length===1);
+const winner=race.findIndex(r=>r.status===200),held=await race[winner].json() as {booking:{id:string;total:number};token:string};const duplicate=await POST(req({...base,key:keys[winner]}));const duplicated=await duplicate.json() as typeof held;ok(duplicated.booking.id===held.booking.id);ok((await readState(cluster,list)).state.bookings.length===1);
+ok((await POST(req({cluster,service,action:'cancel',id:held.booking.id,token:crypto.randomUUID()}))).status===404);
+ok((await POST(req({cluster,service,action:'confirm',id:held.booking.id,token:held.token}))).status===200);
+ok((await POST(req({...base,key:crypto.randomUUID()}))).status===409);
+ok((await POST(req({cluster,service,action:'cancel',id:held.booking.id,token:held.token}))).status===200);
+const again=await POST(req({...base,key:crypto.randomUUID()}));ok(again.status===200);const hold2=await again.json() as typeof held;
+await mutate(cluster,list,s=>{s.bookings.find(b=>b.id===hold2.booking.id)!.expires=Date.now()-1});
+ok((await POST(req({cluster,service,action:'confirm',id:hold2.booking.id,token:hold2.token}))).status===409);
+ok((await POST(req({...base,key:crypto.randomUUID()}))).status===200);
+ok((await adminPOST(req({cluster,service,action:'manual',selection}))).status===409);
+const a:Service={id:'x',title:'Walk',price:800,stay:false,vehicle:false,capacity:20},s=defaults(a),empty:State={settings:{x:s},bookings:[]};const d=addDays(today(),40),q={start:d,end:d,slot:'09:00',guests:2,meal:false};s.seasons=[{name:'Peak',from:d,to:d,weekday:1200,weekend:1400}];s.holidays=[{date:d,rate:1500}];s.overrides=[{date:d,rate:2000}];ok(price(s,d).rate===2000);s.overrides=[];ok(price(s,d).rate===1500);s.holidays=[];ok([1200,1400].includes(price(s,d).rate));
+ok(availability(empty,a,{...s,enabled:false},q).reason==='Service disabled');ok(!availability(empty,a,{...s,closedDates:[d]},q).available);ok(!availability(empty,a,{...s,closedSlots:[d+'@09:00']},q).available);ok(!availability(empty,a,{...s,advance:2},q).available);
+const sample=(await readState(cluster,list)).state.bookings.find(b=>b.status==='held'&&b.expires>Date.now())!;
+const b={...sample,service:'x',start:d,end:d,guests:2,slot:'09:00',status:'confirmed' as const};empty.bookings=[b];ok(!availability(empty,a,{...s,dailyBookings:1},{...q,slot:'14:00'}).available);ok(!availability(empty,a,{...s,dailyGuests:3},{...q,slot:'14:00'}).available);ok(!availability(empty,a,{...s,slotCapacity:3},q).available);
+assert.throws(()=>validateExisting(empty,a,{...s,dailyGuests:1}));checks++;
+const stay={...a,stay:true,capacity:4};const stayS={...defaults(stay),closedDates:[addDays(d,1)]};ok(!availability({settings:{},bookings:[]},stay,stayS,{...q,end:addDays(d,2),slot:'14:00'}).available);ok(availability({settings:{},bookings:[]},stay,stayS,{...q,end:addDays(d,1),slot:'14:00'}).available);
+empty.bookings=[{...b,resource:'guide'}];ok(!availability(empty,{...a,id:'other'},{...s,resource:'guide',resourceCapacity:1},q).available);
+await env.DB.prepare('INSERT INTO admin_members (id,email,user_id,cluster_id,permissions,active,version,created_at,updated_at) VALUES (?,?,?,?,?,1,1,?,?)').bind('test-booking-employee','employee@example.test','employee','vattavada','["bookings"]','now','now').run();setUser('employee@example.test','employee');ok((await adminGET(new Request(root+'/api/admin/booking?cluster=mankulam'))).status===403);ok((await adminPOST(req({cluster:'mankulam',action:'reset'}))).status===403);ok((await adminGET(new Request(root+'/api/admin/booking?cluster=vattavada'))).status===200);
+console.log('PASS: '+checks+' booking checks including concurrent last-place requests, replay, holds, cancellation, pricing, nightly capacity and cluster isolation.');

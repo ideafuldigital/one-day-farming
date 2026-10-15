@@ -1,0 +1,2 @@
+import {mkdirSync,cpSync,existsSync} from 'node:fs';import path from 'node:path';import {db,dataDirectory} from './core.mjs';
+const dest=path.resolve('backups',new Date().toISOString().replace(/[:.]/g,'-'));mkdirSync(dest,{recursive:true,mode:0o700});db().prepare('VACUUM INTO ?').run(path.join(dest,'website.sqlite'));const uploads=path.join(dataDirectory(),'uploads');if(existsSync(uploads))cpSync(uploads,path.join(dest,'uploads'),{recursive:true});console.log('Backup saved: '+dest+'\nStop the website before backing up to keep uploaded files consistent.');

@@ -1,0 +1,1 @@
+let token='';export function setToken(value:string){token=value}export async function cookies(){return {get:()=>token?{value:token}:undefined}}export function redirect(url:string):never{throw Error('redirect:'+url)}

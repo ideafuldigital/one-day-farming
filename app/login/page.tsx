@@ -1,0 +1,1 @@
+import LocalLogin from '@/components/LocalLogin';export const dynamic='force-dynamic';export default async function Page({searchParams}:{searchParams:Promise<{return_to?:string}>}){return <LocalLogin returnTo={(await searchParams).return_to}/>}

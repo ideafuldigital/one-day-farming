@@ -1,0 +1,2 @@
+// Demonstration QR payload; never a travel ticket, payment receipt or reservation.
+export async function POST(request:Request){try{const b=await request.json() as {title?:string;date?:string;cluster?:string};if(!b.title||b.title.length>120||!b.date||!b.cluster)return Response.json({error:'Invalid voucher details'},{status:400});return Response.json({id:'DEMO-'+crypto.randomUUID().slice(0,8).toUpperCase(),createdAt:new Date().toISOString(),status:'demo-only',sms:'Simulated locally; no SMS sent'});}catch{return Response.json({error:'Invalid request'},{status:400});}}

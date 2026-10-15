@@ -1,0 +1,2 @@
+import {cookies} from 'next/headers';import {signOut} from '@/local/core.mjs';import {assertSameOrigin} from '@/lib/admin/policy';import {json,failure} from '@/lib/admin/server';
+export async function POST(req:Request){try{assertSameOrigin(req);signOut((await cookies()).get('odf_session')?.value);const response=json({success:true});response.headers.set('Set-Cookie','odf_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');return response;}catch(e){return failure(e)}}

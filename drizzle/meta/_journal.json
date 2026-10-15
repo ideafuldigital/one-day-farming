@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1791880193949,
+      "tag": "0000_numerous_blockbuster",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1791890103346,
+      "tag": "0001_tidy_franklin_storm",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791895867619,
+      "tag": "0002_fair_the_fury",
+      "breakpoints": true
+    }
+  ]
+}
